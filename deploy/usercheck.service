@@ -1,0 +1,17 @@
+[Unit]
+Description=Username checker
+After=network-online.target
+
+[Service]
+WorkingDirectory=/home/ubuntu/username-checker
+Environment=APP_PASSWORD=CHANGE_ME
+Environment=HOST=0.0.0.0
+Environment=PORT=8080
+Environment=DATA_DIR=/home/ubuntu/usercheck-data
+ExecStart=/usr/bin/python3 server.py
+Restart=always
+RestartSec=5
+User=ubuntu
+
+[Install]
+WantedBy=multi-user.target

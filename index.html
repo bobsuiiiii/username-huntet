@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Username checker</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--card:#f4f4f6;--line:#d8d8de;--ok:#0a7d33;--bad:#b3261e;--warn:#9a6700;--acc:#3b5bdb}
+@media(prefers-color-scheme:dark){:root{--bg:#15161a;--fg:#e8e8ea;--mut:#9a9aa3;--card:#1f2026;--line:#33343c;--ok:#4cd07d;--bad:#ff7b72;--warn:#e3b341;--acc:#7c9cff}}
+*{box-sizing:border-box}body{margin:auto;background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif;padding:16px;max-width:1000px}
+h1{font-size:20px;margin:0 0 12px}h2{font-size:15px;margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-top:8px}label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mut)}
+label.inline{flex-direction:row;align-items:center;gap:6px;color:var(--fg)}
+input,select,textarea{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
+input[type=number]{width:90px}textarea{width:100%;font-family:ui-monospace,monospace;font-size:13px}
+button,a.btn{background:var(--acc);color:#fff;border:0;border-radius:6px;padding:8px 14px;font:inherit;cursor:pointer;text-decoration:none;font-size:15px}
+button.sec,a.btn.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}button:disabled{opacity:.5}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:8px 0}.bar>div{height:100%;background:var(--acc);width:0}
+.stats span{margin-right:14px}.ok{color:var(--ok)}.warn{color:var(--warn)}.mut{color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)}
+.scroll{max-height:320px;overflow:auto}pre{margin:0;white-space:pre-wrap;font-size:13px}#err{color:var(--bad)}
+</style></head><body>
+<h1>Username checker</h1>
+
+<div class="card"><h2>AFK campaign</h2>
+<div class="row">
+<label>Length<input id="length" type="number" min="1" max="12" value="4"></label>
+<label>Type<select id="mode"><option value="c">c: letters + digits</option><option value="l">l: letters only</option><option value="n">n: digits only</option></select></label>
+<label>Names per batch<input id="batch" type="number" min="10" max="20000" value="300"></label>
+<label>Threads<input id="threads" type="number" min="1" max="200" value="20"></label>
+<label>Min gap per proxy (ms)<input id="gap" type="number" min="0" max="60000" value="1500"></label>
+<label>Re-check after (hours)<input id="recheck" type="number" min="1" max="720" value="24"></label>
+</div>
+<div class="row">
+<label class="inline"><input type="checkbox" class="plat" value="roblox" checked>Roblox</label>
+<label class="inline"><input type="checkbox" class="plat" value="discord" checked>Discord</label>
+<label class="inline"><input type="checkbox" class="plat" value="tiktok" checked>TikTok</label>
+<label class="inline"><input type="checkbox" class="plat" value="youtube" checked>YouTube</label>
+<label class="inline"><input type="checkbox" id="useOwn" checked>My proxies</label>
+<label class="inline"><input type="checkbox" id="useFree" checked>Free proxy lists</label>
+</div>
+<details style="margin-top:8px"><summary class="mut">Advanced</summary><div class="row">
+<label>Proxy refresh every (min)<input id="refreshMin" type="number" min="5" value="20"></label>
+<label>Refresh early below (alive)<input id="minAlive" type="number" min="1" value="5"></label>
+<label>Keep fastest free proxies<input id="maxFree" type="number" min="10" value="300"></label>
+<label>Proxy test threads<input id="checkThreads" type="number" min="10" max="400" value="150"></label>
+<label>Proxy test timeout (s)<input id="checkTimeout" type="number" min="1" max="15" value="4"></label>
+</div></details>
+<label style="margin-top:8px">Or a fixed list of names, one per line (checked once, then the campaign finishes)<textarea id="custom" rows="2"></textarea></label>
+<div class="row"><button id="start">Start</button><button id="stop" class="sec">Stop</button><button id="refresh" class="sec">Refresh proxies now</button><span id="err"></span></div>
+<div class="bar"><div id="fill"></div></div>
+<div id="state" class="mut">loading...</div>
+</div>
+
+<div class="card"><h2>Totals (all time)</h2>
+<div class="stats"><span class="ok">available <b id="cA">0</b></span><span>taken <b id="cT">0</b></span><span class="warn">unknown <b id="cU">0</b></span><span class="mut">invalid/rejected <b id="cI">0</b></span></div>
+<div id="byPlat" class="mut" style="margin-top:6px"></div></div>
+
+<div class="card"><h2>Proxies</h2>
+<div id="poolInfo" class="mut"></div>
+<div class="scroll" style="margin:6px 0"><table><thead><tr><th>Proxy (best 30)</th><th>ok</th><th>failed</th><th>state</th></tr></thead><tbody id="ptab"></tbody></table></div>
+<label>My proxies<textarea id="proxies" rows="4" placeholder="host:port:user:pass"></textarea></label>
+<div class="row"><button class="sec" id="saveP">Save my proxies</button><span id="pinfo" class="mut"></span></div>
+<label style="margin-top:8px">Free proxy list URLs<textarea id="sources" rows="4"></textarea></label>
+<div class="row"><button class="sec" id="saveS">Save sources</button><span class="mut">Takes effect at the next refresh.</span></div>
+<pre id="srcErr" class="warn" style="margin-top:6px"></pre>
+</div>
+
+<div class="card"><h2>Logs (saved on the server, survive restarts)</h2>
+<div class="row" style="margin-top:0">
+<label>Status<select id="fStatus"><option value="">all</option><option>available</option><option>taken</option><option>unknown</option><option>invalid</option><option>rejected</option></select></label>
+<label>Platform<select id="fPlat"><option value="">all</option><option>roblox</option><option>discord</option><option>tiktok</option><option>youtube</option></select></label>
+<button class="sec" id="prev">Prev</button><button class="sec" id="next">Next</button><span id="page" class="mut"></span>
+<a class="btn sec" id="csv" href="/api/export.csv">Download CSV</a>
+</div>
+<div class="scroll" style="margin-top:8px;max-height:420px"><table><thead><tr><th>Time (local)</th><th>Platform</th><th>Name</th><th>Status</th><th>Detail</th></tr></thead><tbody id="log"></tbody></table></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id), PER=100; let offset=0, logTotal=0;
+async function api(path, body){
+  const r=await fetch(path, body===undefined?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json(); if(!r.ok) throw new Error(j.error||("HTTP "+r.status)); return j;
+}
+function cell(tr,t,c){const td=document.createElement("td");td.textContent=t;if(c)td.className=c;tr.appendChild(td)}
+const fmt=ts=>new Date(ts*1000).toLocaleString();
+async function poll(){
+  try{
+    const s=await api("/api/state"), c=s.campaign;
+    $("state").textContent=`${c.state}${c.detail?": "+c.detail:""} | batches done: ${c.batches}`+(c.last_refresh?` | proxies refreshed ${fmt(c.last_refresh)} (${c.live_free} free working of ${c.candidates} tested)`:"");
+    $("fill").style.width=(c.job?100*c.job.done/Math.max(c.job.total,1):0)+"%";
+    $("start").disabled=s.running; $("stop").disabled=!s.running; $("refresh").disabled=!s.running;
+    $("srcErr").textContent=(c.source_errors||[]).join("\n");
+    const t=s.counts.total; $("cA").textContent=t.available||0;$("cT").textContent=t.taken||0;$("cU").textContent=t.unknown||0;$("cI").textContent=(t.invalid||0)+(t.rejected||0);
+    const bp=s.counts.available_by_platform; $("byPlat").textContent="available per platform: "+(Object.keys(bp).length?Object.entries(bp).map(([k,v])=>k+" "+v).join(", "):"none yet");
+    const p=s.pool; $("poolInfo").textContent=`${p.total} loaded, ${p.alive} alive, ${p.dead} dropped, ${p.cooling} resting after rate limits`;
+    const tb=$("ptab"); tb.textContent="";
+    for(const x of p.top){const tr=document.createElement("tr");cell(tr,x.label);cell(tr,x.ok);cell(tr,x.bad);cell(tr,x.dead?"dropped":"alive",x.dead?"warn":"ok");tb.appendChild(tr)}
+  }catch(e){$("state").textContent="cannot reach server: "+e.message}
+}
+async function loadLogs(){
+  const q=new URLSearchParams({limit:PER,offset,status:$("fStatus").value,platform:$("fPlat").value});
+  try{
+    const j=await api("/api/logs?"+q); logTotal=j.total; const tb=$("log"); tb.textContent="";
+    for(const r of j.rows){const tr=document.createElement("tr");cell(tr,fmt(r[0]));cell(tr,r[1]);cell(tr,r[2]);cell(tr,r[3],{available:"ok",unknown:"warn",invalid:"mut",rejected:"mut"}[r[3]]);cell(tr,r[4],"mut");tb.appendChild(tr)}
+    $("page").textContent=`${Math.min(offset+1,logTotal)}-${Math.min(offset+PER,logTotal)} of ${logTotal}`;
+    $("csv").href="/api/export.csv?"+new URLSearchParams({status:$("fStatus").value,platform:$("fPlat").value});
+  }catch(e){}
+}
+function num(id){return +$(id).value}
+$("start").onclick=async()=>{
+  $("err").textContent="";
+  try{
+    await api("/api/campaign/start",{platforms:[...document.querySelectorAll(".plat:checked")].map(x=>x.value),
+      length:num("length"),mode:$("mode").value,batch:num("batch"),threads:num("threads"),gap_ms:num("gap"),recheck_hours:num("recheck"),
+      use_own:$("useOwn").checked,use_free:$("useFree").checked,custom:$("custom").value,refresh_min:num("refreshMin"),
+      min_alive:num("minAlive"),max_free:num("maxFree"),check_threads:num("checkThreads"),check_timeout:num("checkTimeout")});
+    poll();
+  }catch(e){$("err").textContent=e.message}
+};
+$("stop").onclick=async()=>{await api("/api/campaign/stop",{});poll()};
+$("refresh").onclick=async()=>{try{await api("/api/refresh",{})}catch(e){$("err").textContent=e.message}};
+$("saveP").onclick=async()=>{try{const r=await api("/api/proxies",{text:$("proxies").value});$("pinfo").textContent=`${r.usable} usable`+(r.skipped.length?`, skipped: ${r.skipped.join("; ")}`:"")}catch(e){$("err").textContent=e.message}};
+$("saveS").onclick=async()=>{try{await api("/api/sources",{text:$("sources").value})}catch(e){$("err").textContent=e.message}};
+for(const id of ["fStatus","fPlat"]) $(id).onchange=()=>{offset=0;loadLogs()};
+$("prev").onclick=()=>{offset=Math.max(0,offset-PER);loadLogs()};
+$("next").onclick=()=>{if(offset+PER<logTotal){offset+=PER;loadLogs()}};
+api("/api/config").then(j=>{
+  $("proxies").value=j.proxies;$("sources").value=j.sources;const c=j.campaign;
+  if(c){for(const x of document.querySelectorAll(".plat"))x.checked=c.platforms.includes(x.value);
+    const m={length:"length",mode:"mode",batch:"batch",threads:"threads",gap:"gap_ms",recheck:"recheck_hours",refreshMin:"refresh_min",minAlive:"min_alive",maxFree:"max_free",checkThreads:"check_threads",checkTimeout:"check_timeout"};
+    for(const [id,k] of Object.entries(m)) if(c[k]!==undefined)$(id).value=c[k];
+    $("useOwn").checked=c.use_own;$("useFree").checked=c.use_free;$("custom").value=(c.custom||[]).join("\n");}
+}).catch(()=>{});
+setInterval(poll,2000);setInterval(loadLogs,10000);poll();loadLogs();
+</script></body></html>
